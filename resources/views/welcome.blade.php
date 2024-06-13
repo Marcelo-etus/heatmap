@@ -2,55 +2,22 @@
 
 @section('content')
 <div id="app">
-    <div class="date-selector">
-        <input type="date" id="startDate" v-model="startDate" placeholder="Data Inicial (timestamp)">
-        <input type="date" id="endDate" v-model="endDate" placeholder="Data Final (timestamp)">
-        <button @click="fetchData">Enviar</button>
-    </div>
-    <div v-if="!error" class="chart-wrapper">
+    <input type="date" id="startDate" v-model="startDate" placeholder="Data Inicial (timestamp)">
+    <input type="date" id="endDate" v-model="endDate" placeholder="Data Final (timestamp)">
+    <button @click="fetchData">Enviar</button>
+    <div v-if="!error">
         <div id="chart"></div>
-        <div v-if="bestTimes.length > 0" class="best-times">
+        <div v-if="bestTimes.length > 0" class="card">
             <h2>Os três melhores horários de postagem:</h2>
-            <div v-for="(time, index) in bestTimes" :key="index" class="best-time">
-                <p>@{{ time.day }} às @{{ time.hour }}</p>
-            </div>
+
+            <div v-for="(time, index) in bestTimes" :key="index">@{{ time.day  }} ás @{{time.hour}}</div>
+
         </div>
     </div>
     <div v-if="error" class="error">
         <p>Ocorreu um erro ao obter as informações. Por favor, tente novamente mais tarde.</p>
     </div>
 </div>
-
-<style>
-    #app {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .date-selector {
-        margin-bottom: 20px;
-    }
-
-    .chart-wrapper {
-        display: flex;
-        justify-content: space-between;
-        width: 100%;
-    }
-
-    .best-times {
-        margin-left: 20px;
-    }
-
-    .best-time {
-        margin-bottom: 10px;
-    }
-
-    .error {
-        color: red;
-        margin-top: 10px;
-    }
-</style>
 
 <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -67,26 +34,24 @@
             error: false
         },
         mounted() {
-            this.setDefaultDates();
+            const today = new Date();
+            const oneWeekAgo = new Date(today);
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+            const startDateFormatted = oneWeekAgo.toISOString().split('T')[0];
+            const endDateFormatted = today.toISOString().split('T')[0];
+
+            this.startDate = startDateFormatted;
+            this.endDate = endDateFormatted;
         },
         methods: {
-            setDefaultDates() {
-                const today = new Date();
-                const oneWeekAgo = new Date(today);
-                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-                this.startDate = this.formatDate(oneWeekAgo);
-                this.endDate = this.formatDate(today);
-            },
-            formatDate(date) {
-                return date.toISOString().split('T')[0];
-            },
             fetchData() {
                 axios.post('/instagram-data', {
                         startDate: this.startDate,
                         endDate: this.endDate
                     })
                     .then(response => {
+                        this.instagramData = []
                         this.error = false;
                         this.instagramData = response.data;
                         console.log('Dados do Instagram:', this.instagramData);
@@ -98,15 +63,28 @@
                         this.error = true;
                     });
             },
+
+
             renderChart() {
-                const days = this.instagramData.datasets_top_day_posts.map(day => day.name);
-                const hours = Array.from({ length: 24 }, (_, i) => `${i < 10 ? '0' + i : i}:00`);
-                const dataByDay = this.instagramData.datasets_top_day_posts.map(day => {
-                    return day.data.map(data => {
+                const days = [];
+                const hours = Array.from({
+                    length: 24
+                }, (_, i) => `${i < 10 ? '0' + i : i}:00`);
+                const dataByDay = [];
+
+                for (const day of this.instagramData.datasets_top_day_posts) {
+                    const dayIndex = days.length;
+                    days.push(day.name);
+                    const dayData = [];
+                    for (const data of day.data) {
                         const hourIndex = parseInt(data.x);
-                        return { x: hourIndex, y: data.y };
-                    });
-                });
+                        dayData.push({
+                            x: hourIndex,
+                            y: data.y
+                        });
+                    }
+                    dataByDay.push(dayData);
+                }
 
                 const series = days.map((day, index) => ({
                     name: day,
@@ -130,35 +108,47 @@
             },
             calculateBestTimes() {
                 if (this.instagramData) {
-                    const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+
 
                     const topTimes = [];
 
+
                     for (const day of this.instagramData.datasets_top_day_posts) {
-                        const hourCounts = Array.from({ length: 24 }, () => 0);
+
+                        const hourCounts = Array.from({
+                            length: 24
+                        }, () => 0);
+
 
                         for (const data of day.data) {
                             const hourIndex = parseInt(data.x);
                             hourCounts[hourIndex] += data.y;
                         }
 
+
                         for (let i = 0; i < 3; i++) {
                             const maxCount = Math.max(...hourCounts);
                             const maxHourIndex = hourCounts.indexOf(maxCount);
 
+
                             topTimes.push({
-                                day: weekdays[new Date(day.name).getDay()],
+                                day: day.name,
                                 hour: `${maxHourIndex}:00`,
                                 qty: maxCount
                             });
+
 
                             hourCounts[maxHourIndex] = 0;
                         }
                     }
 
+
                     this.bestTimes = topTimes.sort((a, b) => b.qty - a.qty).slice(0, 3);
                 }
             }
+
+
         }
     });
 </script>
